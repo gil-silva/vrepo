@@ -219,13 +219,18 @@ fn collect_dir(root string, rel string, pats []string, mut out []VFile) {
 				continue
 			}
 			if content := os.read_file(os.join_path(root, rpath)) {
+				is_vsrc := rpath.ends_with('.v') || rpath.ends_with('.vsh')
 				lines := content.split_into_lines()
 				mut has_fn := false
-				for line in lines {
-					t := line.trim_space()
-					if t.starts_with('fn main(') || t.starts_with('pub fn main(') {
-						has_fn = true
-						break
+				if is_vsrc {
+					// only V sources count as entry points; `fn main(` inside a
+					// README code fence must not make the README an entry.
+					for line in lines {
+						t := line.trim_space()
+						if t.starts_with('fn main(') || t.starts_with('pub fn main(') {
+							has_fn = true
+							break
+						}
 					}
 				}
 				syms := if rpath.ends_with('.v') { symbols_from_src(content) } else { []Symbol{} }

@@ -66,6 +66,9 @@ fn test_brief_full_shape() {
 	assert out.contains('module: flib 0.2.0 [MIT]'), out
 	assert out.contains('entry points: cmd/fix/main.v'), out
 	assert out.contains('deps: https://github.com/example/bar, github.com/example/baz'), out
+	// entry detection only trusts V sources, not non-V files with `fn main`
+	assert out.contains('entry points: cmd/fix/main.v'), out
+	assert !out.contains('entry points: docs.md'), out
 	// tree lists every file, sorted by path
 	assert out.contains('  cmd/fix/main.v'), out
 	assert out.contains('  lib/code.v'), out
