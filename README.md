@@ -20,8 +20,15 @@ zips lack `vlib/json2`-era stdlib refinements this builds against):
 
 ```bash
 git clone https://github.com/vlang/v && cd v && make   # put ./v on PATH
-v install gil-silva.vrepo
+v install gil-silva.vrepo        # once indexed on vpm
+# — or, immediately after a push, before the registry index catches up:
+v install https://github.com/gil-silva/vrepo
 ```
+
+The import path depends on which install you used:
+the indexed install imports as `gil_silva.vrepo.vrepo` (grouped-module
+layout, like `crystallib.core`); the direct-URL install as `vrepo.vrepo`.
+Both resolve to the same `vrepo` module.
 
 ## CLI
 
