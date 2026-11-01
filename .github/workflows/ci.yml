@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+  schedule:
+    # Monday 06:00 UTC — "does it still build against current V"
+    - cron: '0 6 * * 1'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+# V is built from master with the plain `git clone + make` recipe —
+# the same discipline v-mcp-server uses.
+jobs:
+  test:
+    name: v test . (V master)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Install V (source-built, current master)
+        run: |
+          git clone -q --depth 1 https://github.com/vlang/v /tmp/vsrc
+          make -C /tmp/vsrc || make -C /tmp/vsrc
+          echo /tmp/vsrc >> "$GITHUB_PATH"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: v version (sanity)
+        run: v version
+
+      - name: Build the CLI
+        run: v -no-parallel -o bin/vrepo .
+
+      - name: Run tests
+        run: v test .
+
+      - name: CLI smoke (brief of this repo)
+        run: ./bin/vrepo . | head -40
+
+  lint:
+    name: formatting + vet
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Install V (source-built, current master)
+        run: |
+          git clone -q --depth 1 https://github.com/vlang/v /tmp/vsrc
+          make -C /tmp/vsrc || make -C /tmp/vsrc
+          echo /tmp/vsrc >> "$GITHUB_PATH"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: v version (sanity)
+        run: v version
+
+      - name: v fmt -c (strict)
+        run: v fmt -c .
+
+      - name: v vet (informational)
+        run: 'v vet . || echo "vet: found warnings (informational only)"'

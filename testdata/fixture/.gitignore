@@ -1,0 +1,4 @@
+# fixture .gitignore for vrepo tests
+# comments and blanks are skipped
+build/
+junk.log
