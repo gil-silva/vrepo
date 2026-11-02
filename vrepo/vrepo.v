@@ -37,8 +37,10 @@ struct Symbol {
 	line int
 }
 
-// dirs never descended into (besides .gitignore matches).
-const skip_dirs = ['.git', 'node_modules', 'bin']!
+// dirs never descended into (besides .gitignore matches). 'testdata' is
+// skipped so fixture projects are never treated as parts of the scanned
+// root; scanning a fixture explicitly (tests do) still works.
+const skip_dirs = ['.git', 'node_modules', 'bin', 'testdata']!
 
 // brief generates the repo brief for the V project (or plain directory)
 // at root, capped at b.max_chars. Errors if root is not a directory.
@@ -129,17 +131,28 @@ fn vmod_line(vmod string) string {
 	mut version := ''
 	mut license := ''
 	mut deps := []string{}
-	for raw in content.split_into_lines() {
-		line := raw.trim_space()
+	lines := content.split_into_lines()
+	mut i := 0
+	for i < lines.len {
+		line := lines[i].trim_space()
 		if line.starts_with('name:') {
 			name = field_value(line)
 		} else if line.starts_with('version:') {
 			version = field_value(line)
 		} else if line.starts_with('license:') {
 			license = field_value(line)
-		} else if line.starts_with('dependencies:') {
+		} else if line.starts_with('dependencies') {
 			// NOTE: .after(':') cuts at the LAST colon; use all_after_first
-			rest := line.all_after_first(':').trim_space() // e.g. ['a', 'b'] or []
+			mut rest := line.all_after_first(':').trim_space() // e.g. ['a', 'b'] or []
+			// a multiline list streams until its closing bracket, so a
+			// v.mod with `dependencies: [\n 'a',\n 'b'\n]` reports its deps
+			for !rest.ends_with(']') {
+				i++
+				if i >= lines.len {
+					break
+				}
+				rest += ' ' + lines[i].trim_space()
+			}
 			deps = rest
 				.replace('[', '')
 				.replace(']', '')
@@ -149,6 +162,7 @@ fn vmod_line(vmod string) string {
 				.map(it.trim_space())
 				.filter(it != '')
 		}
+		i++
 	}
 	dep_note := if deps.len > 0 { deps.join(', ') } else { 'none' }
 	lic := if license.len > 0 { ' [${license}]' } else { '' }
@@ -207,7 +221,9 @@ fn collect_dir(root string, rel string, pats []string, mut out []VFile) {
 		rpath := if rel == '' { name } else { '${rel}/${name}' }
 		is_dir := os.is_dir(os.join_path(root, rpath))
 		if is_dir {
-			if name in skip_dirs {
+			// hidden dirs (config/tool state like .git, .github, .cache)
+			// never belong in a repo map — dot files (e.g. .gitignore) stay.
+			if name.starts_with('.') || name in skip_dirs {
 				continue
 			}
 			if matches_ignores(rpath, true, pats) {
@@ -323,7 +339,7 @@ fn symbols_from_src(content string) []Symbol {
 	mut syms := []Symbol{}
 	for i, raw_line in content.split_into_lines() {
 		line := raw_line.trim_space()
-		kind := if line.starts_with('pub fn (') {
+		kind := if line.starts_with('pub fn (') || line.starts_with('fn (') {
 			'method'
 		} else if line.starts_with('pub fn ') || line.starts_with('fn ') {
 			'fn'

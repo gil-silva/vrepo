@@ -40,6 +40,24 @@ fn test_collect_respects_gitignore() {
 	assert !paths.contains('build/artifact.txt')
 }
 
+fn test_collect_skips_testdata_and_hidden_dirs() {
+	// fixture projects under testdata/ and hidden tool dirs (.github etc.)
+	// stay out of a repo's brief; dot FILES (.gitignore) remain
+	root := os.join_path(os.temp_dir(), 'vrepo-tmp-${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'testdata', 'nested'), os.MkdirParams{}) or { panic(err.msg()) }
+	os.mkdir_all(os.join_path(root, '.github'), os.MkdirParams{}) or { panic(err.msg()) }
+	os.mkdir_all(os.join_path(root, 'lib'), os.MkdirParams{}) or { panic(err.msg()) }
+	os.write_file(os.join_path(root, 'testdata', 'main.v'), 'fn main() {\n}\n')!
+	os.write_file(os.join_path(root, '.github', 'ci.yml'), 'x: 1\n')!
+	os.write_file(os.join_path(root, '.github', 'hidden.v'), 'module x\n')!
+	os.write_file(os.join_path(root, 'lib', 'code.v'), 'module lib\n')!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	paths := collect(root).map(it.path)
+	assert paths == ['lib/code.v'], paths.str()
+}
+
 fn test_symbols_from_src_on_fixture_file() {
 	content := os.read_file(os.join_path(fixture(), 'lib', 'code.v'))!
 	syms := symbols_from_src(content)
@@ -54,10 +72,33 @@ fn test_symbols_from_src_on_fixture_file() {
 	assert syms[0].line == 1, '${syms[0].line}'
 }
 
+fn test_private_methods_are_outlined() {
+	// a non-pub method (`fn (t &Thing) bump() ...`) used to be misread as a
+	// free fn whose name parse failed — silently missing from the outline
+	syms := symbols_from_src('fn (t &Thing) bump() int {\n\treturn t.n\n}\n')
+	assert syms.len == 1, '${syms.len}'
+	assert syms[0].kind == 'method', syms[0].kind
+	assert syms[0].name == 'bump', syms[0].name
+}
+
 fn test_vmod_line_from_fixture() {
 	line := vmod_line(os.join_path(fixture(), 'v.mod'))
 	assert line.contains('module: flib 0.2.0 [MIT]'), line
 	assert line.contains('deps: https://github.com/example/bar, github.com/example/baz'), line
+}
+
+fn test_vmod_line_multiline_deps() {
+	// a multiline dependencies list must stream until its closing bracket
+	// instead of reporting 'deps: none'
+	dir := os.join_path(os.temp_dir(), 'vrepo-vmod-${os.getpid()}')
+	os.mkdir_all(dir, os.MkdirParams{}) or { panic(err.msg()) }
+	os.write_file(os.join_path(dir, 'v.mod'),
+		"Module {\n\tname: 'flib'\n\tversion: '0.2.0'\n\tlicense: 'MIT'\n\tdependencies: [\n\t\t'a',\n\t\t'b'\n\t]\n}\n")!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	line := vmod_line(os.join_path(dir, 'v.mod'))
+	assert line.contains('deps: a, b'), line
 }
 
 fn test_brief_full_shape() {
